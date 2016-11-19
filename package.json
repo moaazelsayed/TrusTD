@@ -1,0 +1,12 @@
+{
+  "name": "trustd",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.html",
+  "scripts": {
+    "test": "npm test",
+    "start": "node server.js"
+  },
+  "author": "Moaaz Elsayed",
+  "license": "ISC"
+}
