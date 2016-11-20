@@ -18,14 +18,17 @@ var config = {
 };
 
 var ref = new firebase.initializeApp(config);
-var firebaseDataRef = ref.database().ref();
+var firebaseDataRef = ref.database();
 //-------
 
 var previousMessage="";
 var previousName="";
 var previousMention="";
-var previousAmount="";
+var previousAmount=0;
 var previousEmail="";
+var objects = "" ;
+var intentName = "" ;
+
 
 app.use( bodyParser.json() );
 
@@ -45,7 +48,6 @@ app.post('/', function(req, res) {
 	messageId = req.body.data.id;
 	nameId = req.body.data.personId;
 	console.log(messageId);
-
 	var sendMessageID = "https://api.ciscospark.com/v1/messages/" + messageId;
 	var sendNameID = "https://api.ciscospark.com/v1/people/"+nameId;
 
@@ -61,15 +63,30 @@ app.post('/', function(req, res) {
 
 	unirest.get(sendMessageID).headers(header)
 	.end(function(res){
+		if (res.body.text.indexOf('how') !== -1 || res.body.text.indexOf('much') !== -1){
+
+			unirest.get(sendNameID).headers(header)
+			.end(function(response){
+				name = response.body.displayName;
+
+				unirest.post("https://api.ciscospark.com/v1/messages")
+				.headers(header)
+				.send({
+					'roomId': res.body.roomId,
+					'text' : 'Let me check '+ name.split(' ')[0]
+				})
+				.end(function(req, resp){
+						MyCalc(name, res.body.roomId, header);
+					
+				});
+			})
+		}
 		if (res.body.text.indexOf('yes') !== -1 && mentionedId2 == null){
 
 			unirest.get(sendNameID).headers(header)
 			.end(function(response){
 				name = response.body.displayName;
 
-				console.log('name ', name);
-				console.log('previousMention ', previousMention);
-				console.log('rooms ', res.body.roomId);
 
 				if (name === previousMention){
 					unirest.post("https://api.ciscospark.com/v1/messages")
@@ -145,19 +162,26 @@ app.post('/', function(req, res) {
 			message = res.body.text;
 			//console.log("Message: ", message);
 			//APIQuery(message);
-
-			var amount = message.replace( /^\D+/g, '');
-			previousAmount = amount;
+			var amount;
+			if (message.match( /\d+/g )!== null){
+				amount = message.match( /\d+/g)[0];
+				previousAmount = amount;
+			}
+			
 			email = res.body.personEmail;
+			//console.log( "calling API" + message);
+			objects="";
+			APIQuery (JSON.stringify (message));
+
 			previousEmail = email;
-			console.log("Email: ", email);
+			//console.log("Email: ", email);
 
 			unirest.get(sendNameID).headers(header)
 			.end(function(response){
 
 				name = response.body.displayName;
 				previousName = name;
-				console.log("Name: ", name);
+				//console.log("Name: ", name);
 
 
 				unirest.get(sendMention).headers(header)
@@ -165,15 +189,17 @@ app.post('/', function(req, res) {
 
 					var nameMention = responseName.body.displayName;
 					previousMention = nameMention;
-					
+
+					previousAmount = (moneyvalue(objects)===0)? previousAmount: moneyvalue(objects);
+					console.log(moneyvalue(objects));
 					unirest.post("https://api.ciscospark.com/v1/messages")
 					.headers(header)
 					.send({
 						'roomId': res.body.roomId,
-						'text' : 'Hey: '+ nameMention + ', ' + name + ' says you owe them ' + amount + '. Can you please confirm?'
+						'text' : 'Hey: '+ nameMention + ', ' + name + ' says you owe them ' + (objects?objects:"money:" )+ ' $' + previousAmount + '. Can you please confirm?'
 					})
 					.end(function(req, res){
-						console.log(res);
+						//console.log(res);
 					});
 				})
 			})
@@ -189,23 +215,48 @@ app.listen(8080, function() {
 	console.log('listening on *: ' + 8080);
 });
 
-function GetMessage(){
+function MyCalc(name, room, header) {
+	firebaseDataRef.ref().once('value')
+	.then(function(snapshot) {
+  		var givenData = snapshot.val();
+  		//console.log(JSON.parse(givenData));
+  		//console.log(givenData.IOUs.name);
+  		if (givenData.IOUs.name === ''){
+  			console.log("Entered");
 
+  			unirest.post("https://api.ciscospark.com/v1/messages")
+				.headers(header)
+				.send({
+					'roomId': room,
+					'text' : name.split(' ')[0]+', you do not appear to owe anything to anybody'
+				})
+				.end(function(req, resp){
+					
+					
+				});
+  		} else {
+  			for (var key in givenData.IOUs){
+  				for(var key2 in givenData.IOUs[key]){
+  					for (var key3 in givenData.IOUs[key][key2]){
+  						//Do calculation algorith
+  						//console.log(givenData.IOUs[key][key2][key3]);
+  					}
+  				}
+  			}
+  		}
+  	});
 }
 
-function GetName(){
-
-}
 
 function DataPush(taker, count, data) {
-    firebaseDataRef.child('IOUs').child(taker+count).set(data)
+    firebaseDataRef.ref().child('IOUs').child(taker).push(data)
     .then((res) => {
         // Done
         //Reset iou perameters
 		var previousMessage="";
 		var previousName="";
 		var previousMention="";
-		var previousAmount="";
+		var previousAmount=0;
 		var previousEmail="";
     })
     .catch((err) => {
@@ -213,20 +264,60 @@ function DataPush(taker, count, data) {
     });
 }
 
-(function APIQuery(message){
+
+function APIQuery(message){
 	// intentName
 	// objects
 	// given-name
-	var message1 = 'calen owes me dinner';
-	var queryURL = 'https://api.api.ai/api/query?v=20150910&query='+message1+'&lang=en&sessionId=234948ff-72a1-460f-ad7f-049dd8a24415&timezone=2016-11-19T21:54:43-0500';
+	//var message = 'TrusTD calen owes me dinner';
+	trimstr =message.substring(7, message.length)
+	console.log ("inAPIQ" + trimstr);
+	var queryURL = 'https://api.api.ai/api/query?v=20150910&query='+  trimstr+'&lang=en&sessionId=234948ff-72a1-460f-ad7f-049dd8a24415&timezone=2016-11-19T21:54:43-0500';
 	var header = {
 		'Authorization':'Bearer 25c026f44982440e9b773e38419d0382',
 		'Content-Type':'application/json'
 	};
 	unirest.get(queryURL).headers(header)
 		.end(function(response){
-			console.log(response.raw_body.parameters.intentName);
-			console.log(response.raw_body.parameters.objects);
+			var jsonobj = JSON.parse(   response.raw_body);
+			var jresult = jsonobj.result;
+
+			objects = jresult.parameters.objects;
+			intentName = jresult.metadata.intentName;
+			//money = jresult.parameters.currency.amount;
+			//console.log(response.raw_body);
+			console.log( objects + intentName);
 		}) 
-})();
+};
+
+function moneyvalue(objectname){
+val = 0	
+if (objectname.indexOf('money') !== -1){
+	val= 0;
+}
+else if (objectname.indexOf('apology') !== -1){
+	val= 5
+}
+
+else if (objectname.indexOf('tickets') !== -1){
+	val= 30
+}
+else if (objectname.indexOf('move') !== -1){
+	val= 100
+}
+else if (objectname.indexOf('transport') !== -1){
+	val= 20
+}
+else if (objectname.indexOf('beverage') !== -1){
+	val= 5
+}
+else if (objectname.indexOf('food') !== -1){
+	val= 10
+}
+
+else if (objectname.indexOf('alcohol') !== -1){
+	val= 10
+}
+return val;
+}	// intentName
 
