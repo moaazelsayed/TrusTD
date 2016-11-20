@@ -69,15 +69,22 @@ app.post('/', function(req, res) {
 			.end(function(response){
 				name = response.body.displayName;
 
-				unirest.post("https://api.ciscospark.com/v1/messages")
-				.headers(header)
-				.send({
-					'roomId': res.body.roomId,
-					'text' : 'Let me check '+ name.split(' ')[0]
-				})
-				.end(function(req, resp){
-						MyCalc(name, res.body.roomId, header);
-					
+				unirest.get(sendMention).headers(header)
+				.end(function(responseName){
+
+					var nameMention = responseName.body.displayName;
+					//previousMention = nameMention;
+
+					unirest.post("https://api.ciscospark.com/v1/messages")
+					.headers(header)
+					.send({
+						'roomId': res.body.roomId,
+						'text' : 'Let me check '+ name.split(' ')[0]
+					})
+					.end(function(req, resp){
+							MyCalc(name, res.body.roomId, header, nameMention);
+						
+					});
 				});
 			})
 		}
@@ -158,7 +165,7 @@ app.post('/', function(req, res) {
 		if (res.body.personEmail.indexOf("TrusTD") !== -1 || mentionedId2 == null){
 			return;
 		} 
-		if (mentionedId2 !== null){
+		if (mentionedId2 !== null && res.body.text.indexOf('how') === -1){
 			message = res.body.text;
 			//console.log("Message: ", message);
 			//APIQuery(message);
@@ -191,7 +198,7 @@ app.post('/', function(req, res) {
 					previousMention = nameMention;
 
 					previousAmount = (moneyvalue(objects)===0)? previousAmount: moneyvalue(objects);
-					console.log(moneyvalue(objects));
+					//console.log(moneyvalue(objects));
 					unirest.post("https://api.ciscospark.com/v1/messages")
 					.headers(header)
 					.send({
@@ -215,35 +222,77 @@ app.listen(8080, function() {
 	console.log('listening on *: ' + 8080);
 });
 
-function MyCalc(name, room, header) {
+function MyCalc(name, room, header, mention) {
 	firebaseDataRef.ref().once('value')
 	.then(function(snapshot) {
   		var givenData = snapshot.val();
-  		//console.log(JSON.parse(givenData));
-  		//console.log(givenData.IOUs.name);
-  		if (givenData.IOUs.name === ''){
-  			console.log("Entered");
+  		var amountCurr = 0;
+  		var amountOwed = 0;
+  		var personOwed = "";
+  		var personOwedPrevious = "";
 
-  			unirest.post("https://api.ciscospark.com/v1/messages")
-				.headers(header)
-				.send({
-					'roomId': room,
-					'text' : name.split(' ')[0]+', you do not appear to owe anything to anybody'
-				})
-				.end(function(req, resp){
+  		// 	unirest.post("https://api.ciscospark.com/v1/messages")
+				// .headers(header)
+				// .send({
+				// 	'roomId': room,
+				// 	'text' : name.split(' ')[0]+', you do not appear to owe anything to anybody'
+				// })
+				// .end(function(req, resp){
+				// 	//Done
+				// });
+  		
+		for (var key in givenData.IOUs){
+			for(var key2 in givenData.IOUs[key]){
+				for (var key3 in givenData.IOUs[key][key2]){
+					//Do calculation algorithm
 					
-					
-				});
-  		} else {
-  			for (var key in givenData.IOUs){
-  				for(var key2 in givenData.IOUs[key]){
-  					for (var key3 in givenData.IOUs[key][key2]){
-  						//Do calculation algorith
-  						//console.log(givenData.IOUs[key][key2][key3]);
-  					}
-  				}
-  			}
-  		}
+					if (key3 === 'amount'){
+							amountCurr = parseInt(givenData.IOUs[key][key2][key3]);
+					}
+					if (key.indexOf(mention) !== -1 && givenData.IOUs[key][key2][key3] === name){
+						//console.log('owed', amountCurr);
+						amountOwed = amountOwed - amountCurr;
+					}
+					if (key.indexOf(name) !== -1 && givenData.IOUs[key][key2][key3] === mention){
+						//console.log('taken',amountCurr);
+						amountOwed = amountOwed + amountCurr;
+					}
+					//console.log(givenData.IOUs[key][key2][key3]);
+				}
+			}
+		}
+		console.log(amountOwed);
+		if (amountOwed === 0){
+			unirest.post("https://api.ciscospark.com/v1/messages")
+			.headers(header)
+			.send({
+				'roomId': room,
+				'text' : name.split(' ')[0]+', you do not appear to owe anything to '+ mention.split(' ')[0]
+			})
+			.end(function(req, resp){
+				//Done
+			});
+		} if (amountOwed < 0){
+			unirest.post("https://api.ciscospark.com/v1/messages")
+			.headers(header)
+			.send({
+				'roomId': room,
+				'text' : name.split(' ')[0]+', it seems like '+ mention.split(' ')[0]+ ' owes you around $'+ Math.abs(amountOwed)
+			})
+			.end(function(req, resp){
+				//Done
+			});
+		} else if (amountOwed !== 0){
+			unirest.post("https://api.ciscospark.com/v1/messages")
+			.headers(header)
+			.send({
+				'roomId': room,
+				'text' : name.split(' ')[0]+', it seems like you owe '+ mention.split(' ')[0]+ ' around $'+ Math.abs(amountOwed)
+			})
+			.end(function(req, resp){
+				//Done
+			});
+		}
   	});
 }
 
