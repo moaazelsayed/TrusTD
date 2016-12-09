@@ -10,11 +10,7 @@ var header = {
 var transactionCount=0;
 //-------
 var config = {
-	apiKey: "AIzaSyAlQSYBDwglqnMtesvxRTTNVFrnJm70hEM",
-	authDomain: "trustd-3108c.firebaseapp.com",
-	databaseURL: "https://trustd-3108c.firebaseio.com",
-	storageBucket: "trustd-3108c.appspot.com",
-	messagingSenderId: "703231472570"
+	//Insert API Keys
 };
 
 var ref = new firebase.initializeApp(config);
